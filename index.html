@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+        #reader {
+            width: 100%;
+            height: 300px;
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #reader.active {
+            border-color: #4CAF50;
+            background: #f0f9f0;
+        }
+        .scanner-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            border: 3px solid #4CAF50;
+            border-radius: 8px;
+            pointer-events: none;
+            z-index: 10;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+            display: none;
+        }
+        .scanner-overlay::before {
+            content: '';
+            position: absolute;
+            top: -3px;
+            left: -3px;
+            right: -3px;
+            bottom: -3px;
+            border: 2px solid rgba(76, 175, 80, 0.5);
+            border-radius: 8px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.05); }
+        }
+        button {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            margin: 10px 0;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        #startScan {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+        }
+        #stopScan {
+            background: linear-gradient(135deg, #f44336, #da190b);
+            color: white;
+            display: none;
+        }
+
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 600;
+            word-break: break-all;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .instruction {
+            text-align: center;
+            color: #666;
+            margin: 15px 0;
+            font-style: italic;
+        }
+        .debug {
+            font-size: 12px;
+            color: #888;
+            margin-top: 20px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            text-align: left;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        #reader > div {
+            border-radius: 12px !important;
+            overflow: hidden;
+        }
+        .scanner-placeholder {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 QR Loyalty Card Scanner</h1>
+        <div class="instruction">Camera QR Scanner</div>
+        
+        <div id="reader">
+            <div class="scanner-placeholder">Click "Start Scanner" to begin</div>
+            <div class="scanner-overlay"></div>
+        </div>
+        
+        <button id="startScan">📷 Start Scanner</button>
+        <button id="stopScan">⏹️ Stop Scanner</button>
+        
+        <div id="status"></div>
+        
+        <div class="instruction">
+            📷 Hold QR code steady within the scanning frame<br>
+            💡 Ensure good lighting and the QR code is clearly visible
+        </div>
+        
+        <div id="debug" class="debug" style="display: none;"></div>
+    </div>
+
+    <script>
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+        
+        const startBtn = document.getElementById('startScan');
+        const stopBtn = document.getElementById('stopScan');
+        const readerDiv = document.getElementById('reader');
+        const statusDiv = document.getElementById('status');
+        const debugDiv = document.getElementById('debug');
+        const overlay = readerDiv.querySelector('.scanner-overlay');
+        const placeholder = readerDiv.querySelector('.scanner-placeholder');
+        
+        function showStatus(message, type = 'success', sticky = false) {
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+            if (!sticky && type === 'success') {
+                setTimeout(() => { 
+                    if (statusDiv.innerHTML.includes(message)) {
+                        statusDiv.innerHTML = ''; 
+                    }
+                }, 4000);
+            }
+        }
+        
+        function showDebug(message) {
+            debugDiv.style.display = 'block';
+            debugDiv.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}<br>`;
+            debugDiv.scrollTop = debugDiv.scrollHeight;
+            console.log('DEBUG:', message);
+        }
+        
+        function startScanner() {
+            if (isScanning) return;
+            
+            showDebug('Initializing QR scanner...');
+            
+            // Remove the placeholder text
+            placeholder.style.display = 'none';
+            
+            // Initialize the scanner
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            
+            const config = { 
+                fps: 10, 
+                qrbox: { width: 200, height: 200 },
+                supportedScanTypes: [
+                    Html5QrcodeScanType.SCAN_TYPE_CAMERA
+                ],
+                aspectRatio: 1.0
+            };
+            
+            Html5Qrcode.getCameras()
+                .then(cameras => {
+                    if (cameras && cameras.length) {
+                        showDebug(`Found ${cameras.length} camera(s)`);
+                        
+                        // Prefer back camera if available
+                        const backCamera = cameras.find(camera => 
+                            camera.label.toLowerCase().includes('back') || 
+                            camera.label.toLowerCase().includes('rear')
+                        );
+                        const cameraId = backCamera ? backCamera.id : cameras[0].id;
+                        
+                        showDebug(`Using camera: ${backCamera ? 'Back' : 'First available'}`);
+                        
+                        return html5QrcodeScanner.start(
+                            cameraId,
+                            config,
+                            onScanSuccess,
+                            onScanFailure
+                        );
+                    } else {
+                        showStatus('❌ No cameras found', 'error', true);
+                        showDebug('No cameras detected on this device');
+                        throw new Error('No cameras available');
+                    }
+                })
+                .then(() => {
+                    isScanning = true;
+                    startBtn.style.display = 'none';
+                    stopBtn.style.display = 'block';
+                    readerDiv.classList.add('active');
+                    overlay.style.display = 'block';
+                    
+                    showStatus('📷 Scanner active - point camera at QR code', 'success');
+                    showDebug('Scanner started successfully');
+                })
+                .catch(err => {
+                    // Show the placeholder again if initialization failed
+                    placeholder.style.display = 'block';
+                    placeholder.textContent = 'Failed to start camera. Click "Start Scanner" to try again.';
+                    
+                    showStatus('❌ Failed to start scanner: ' + err, 'error', true);
+                    showDebug('Scanner error: ' + err);
+                });
+        }
+        
+        function onScanSuccess(decodedText, decodedResult) {
+            showDebug(`QR Code detected: ${decodedText}`);
+            handleQRDetected(decodedText);
+        }
+        
+        function onScanFailure(error) {
+            // Most errors are just because no QR code is detected yet
+            // Only show errors that aren't the expected "not found" type
+            if (!error) return;
+            
+            if (typeof error === 'string') {
+                if (error.includes('No MultiFormat Readers') || error.includes('NotFoundException')) return;
+            } else if (error.message) {
+                if (error.message.includes('No MultiFormat Readers') || error.message.includes('NotFoundException')) return;
+            }
+            
+            showDebug(`Scan error: ${error}`);
+        }
+        
+        function handleQRDetected(scannedText) {
+            showStatus(`✅ QR Code Detected!<br><strong>Loyalty ID: ${scannedText}</strong><br>Redirecting in 3 seconds...`, 'success', true);
+            
+            // Wait 3 seconds, then redirect
+            let countdown = 3;
+            const countdownInterval = setInterval(() => {
+                countdown--;
+                if (countdown > 0) {
+                    showStatus(`✅ QR Code Detected!<br><strong>Loyalty ID: ${scannedText}</strong><br>Redirecting in ${countdown} seconds...`, 'success', true);
+                } else {
+                    clearInterval(countdownInterval);
+                    
+                    const googleFormUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdzinh-EN1eDM0ZXVJ_v-iFOuNm-ZJonrSJJk6zurjltvDY1A/viewform';
+                    
+                    // Try multiple prefill URL formats to ensure compatibility
+                    const prefilledUrls = [
+                        `${googleFormUrl}?usp=pp_url&entry.1269206344=${encodeURIComponent(scannedText)}`,
+                        `${googleFormUrl}?entry.1269206344=${encodeURIComponent(scannedText)}`,
+                        `${googleFormUrl}?usp=pp_url&entry.1269206344=${scannedText}`,
+                        `${googleFormUrl}?prefill_entry.1269206344=${encodeURIComponent(scannedText)}`
+                    ];
+                    
+                    showDebug(`Trying primary URL: ${prefilledUrls[0]}`);
+                    showDebug(`Backup URLs available: ${prefilledUrls.length - 1}`);
+                    
+                    stopScanner();
+                    
+                    // Try the primary URL first
+                    window.open(prefilledUrls[0], '_self');
+                }
+            }, 1000);
+        }
+        
+        function stopScanner() {
+            showDebug('Stopping scanner...');
+            
+            if (html5QrcodeScanner && isScanning) {
+                html5QrcodeScanner.stop()
+                    .then(() => {
+                        showDebug('Scanner successfully stopped');
+                        html5QrcodeScanner.clear();
+                    })
+                    .catch(err => {
+                        showDebug('Error stopping scanner: ' + err);
+                    });
+            }
+            
+            isScanning = false;
+            startBtn.style.display = 'block';
+            stopBtn.style.display = 'none';
+            readerDiv.classList.remove('active');
+            overlay.style.display = 'none';
+            
+            // Show placeholder again
+            placeholder.style.display = 'block';
+            placeholder.textContent = 'Click "Start Scanner" to begin';
+            
+            showStatus('Scanner stopped.', 'info');
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startScanner);
+        stopBtn.addEventListener('click', stopScanner);
+        
+        // Stop scanner when page becomes hidden
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && isScanning) {
+                showDebug('Page hidden, stopping scanner');
+                stopScanner();
+            }
+        });
+        
+        window.addEventListener('beforeunload', function() {
+            if (isScanning) {
+                stopScanner();
+            }
+        });
+        
+        showDebug('QR Scanner initialized - ready to use');
+    </script>
+</body>
+</html>
