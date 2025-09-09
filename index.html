@@ -205,10 +205,7 @@
             
             showDebug('Initializing QR scanner...');
             
-            // Remove the placeholder text
             placeholder.style.display = 'none';
-            
-            // Initialize the scanner
             html5QrcodeScanner = new Html5Qrcode("reader");
             
             const config = { 
@@ -225,7 +222,6 @@
                     if (cameras && cameras.length) {
                         showDebug(`Found ${cameras.length} camera(s)`);
                         
-                        // Prefer back camera if available
                         const backCamera = cameras.find(camera => 
                             camera.label.toLowerCase().includes('back') || 
                             camera.label.toLowerCase().includes('rear')
@@ -257,7 +253,6 @@
                     showDebug('Scanner started successfully');
                 })
                 .catch(err => {
-                    // Show the placeholder again if initialization failed
                     placeholder.style.display = 'block';
                     placeholder.textContent = 'Failed to start camera. Click "Start Scanner" to try again.';
                     
@@ -272,8 +267,6 @@
         }
         
         function onScanFailure(error) {
-            // Most errors are just because no QR code is detected yet
-            // Only show errors that aren't the expected "not found" type
             if (!error) return;
             
             if (typeof error === 'string') {
@@ -288,7 +281,6 @@
         function handleQRDetected(scannedText) {
             showStatus(`✅ QR Code Detected!<br><strong>Loyalty ID: ${scannedText}</strong><br>Redirecting in 3 seconds...`, 'success', true);
             
-            // Wait 3 seconds, then redirect
             let countdown = 3;
             const countdownInterval = setInterval(() => {
                 countdown--;
@@ -297,22 +289,19 @@
                 } else {
                     clearInterval(countdownInterval);
                     
-                    const googleFormUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSdzinh-EN1eDM0ZXVJ_v-iFOuNm-ZJonrSJJk6zurjltvDY1A/viewform';
+                    // ✅ Updated Google Form URL
+                    const googleFormUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSflgVNACf52GDb-0K_324lFYYZ0GtIpmIjv-Iv7bx2zPNMp7Q/viewform';
                     
-                    // Try multiple prefill URL formats to ensure compatibility
                     const prefilledUrls = [
                         `${googleFormUrl}?usp=pp_url&entry.1269206344=${encodeURIComponent(scannedText)}`,
-                        `${googleFormUrl}?entry.1269206344=${encodeURIComponent(scannedText)}`,
-                        `${googleFormUrl}?usp=pp_url&entry.1269206344=${scannedText}`,
-                        `${googleFormUrl}?prefill_entry.1269206344=${encodeURIComponent(scannedText)}`
+                        `${googleFormUrl}?entry.1269206344=${encodeURIComponent(scannedText)}`
                     ];
                     
-                    showDebug(`Trying primary URL: ${prefilledUrls[0]}`);
-                    showDebug(`Backup URLs available: ${prefilledUrls.length - 1}`);
+                    showDebug(`Redirecting to: ${prefilledUrls[0]}`);
                     
                     stopScanner();
                     
-                    // Try the primary URL first
+                    // Open form in the same window
                     window.open(prefilledUrls[0], '_self');
                 }
             }, 1000);
@@ -338,18 +327,15 @@
             readerDiv.classList.remove('active');
             overlay.style.display = 'none';
             
-            // Show placeholder again
             placeholder.style.display = 'block';
             placeholder.textContent = 'Click "Start Scanner" to begin';
             
             showStatus('Scanner stopped.', 'info');
         }
         
-        // Event listeners
         startBtn.addEventListener('click', startScanner);
         stopBtn.addEventListener('click', stopScanner);
         
-        // Stop scanner when page becomes hidden
         document.addEventListener('visibilitychange', function() {
             if (document.hidden && isScanning) {
                 showDebug('Page hidden, stopping scanner');
